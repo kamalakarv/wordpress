@@ -1,0 +1,626 @@
+{
+  "Description": "This template creates a new deployment of a Wordpress server, with CM supplied by Puppet",
+  "Parameters": {
+    "KeyPairName": {
+      "Type": "String",
+      "Description": "Name of SSH key to use for access to nodes"
+    },
+    "WPAdminPwd": {
+      "Type": "String",
+      "Default": "admin",
+      "Description": "Admin password for WordPress"
+    },
+    "ami": {
+      "Type": "String",
+      "Default": "ami-0f8bce65",
+      "Description": "Base ami"
+    }
+  },
+  "Resources": {
+    "WpVpc": {
+      "Type": "AWS::EC2::VPC",
+      "Properties": {
+        "CidrBlock": "10.0.0.0/16",
+        "EnableDnsSupport": "true",
+        "EnableDnsHostnames": "true"
+      },
+      "Metadata": {
+        "AWS::CloudFormation::Designer": {
+          "id": "56378123-9b4b-44eb-aaa8-63b304a27011"
+        }
+      }
+    },
+    "WpSubnet": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": {
+          "Ref": "WpVpc"
+        },
+        "CidrBlock": "10.0.0.0/24",
+        "Tags": [
+          {
+            "Key": "Application",
+            "Value": {
+              "Ref": "AWS::StackId"
+            }
+          }
+        ]
+      },
+      "Metadata": {
+        "AWS::CloudFormation::Designer": {
+          "id": "24517522-7e70-46ad-96dc-fd610281a4f4"
+        }
+      }
+    },
+    "WpInternetGateway": {
+      "Type": "AWS::EC2::InternetGateway",
+      "Properties": {
+        "Tags": [
+          {
+            "Key": "Application",
+            "Value": {
+              "Ref": "AWS::StackId"
+            }
+          }
+        ]
+      },
+      "Metadata": {
+        "AWS::CloudFormation::Designer": {
+          "id": "d3c5d258-bc0b-4ed0-84da-eb02ba713c31"
+        }
+      }
+    },
+    "WpAttachGateway": {
+      "Type": "AWS::EC2::VPCGatewayAttachment",
+      "Properties": {
+        "VpcId": {
+          "Ref": "WpVpc"
+        },
+        "InternetGatewayId": {
+          "Ref": "WpInternetGateway"
+        }
+      },
+      "Metadata": {
+        "AWS::CloudFormation::Designer": {
+          "id": "b3555356-c508-4ea8-98e5-6c0c3c70f456"
+        }
+      }
+    },
+    "WpRouteTable": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": {
+        "VpcId": {
+          "Ref": "WpVpc"
+        },
+        "Tags": [
+          {
+            "Key": "Application",
+            "Value": {
+              "Ref": "AWS::StackId"
+            }
+          }
+        ]
+      },
+      "Metadata": {
+        "AWS::CloudFormation::Designer": {
+          "id": "ca86a995-5eb2-4b0d-919b-4ffece0f999f"
+        }
+      }
+    },
+    "GwRoute": {
+      "Type": "AWS::EC2::Route",
+      "DependsOn": "WpAttachGateway",
+      "Properties": {
+        "RouteTableId": {
+          "Ref": "WpRouteTable"
+        },
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "GatewayId": {
+          "Ref": "WpInternetGateway"
+        }
+      },
+      "Metadata": {
+        "AWS::CloudFormation::Designer": {
+          "id": "1063ffad-9fc2-4a04-be66-2d6be3a04fc6"
+        }
+      }
+    },
+    "WpSubnetRouteTableAssociation": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "SubnetId": {
+          "Ref": "WpSubnet"
+        },
+        "RouteTableId": {
+          "Ref": "WpRouteTable"
+        }
+      },
+      "Metadata": {
+        "AWS::CloudFormation::Designer": {
+          "id": "e5c12bf6-8b89-45be-8bb2-d2307726ede9"
+        }
+      }
+    },
+    "WpSecGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Allow SSH access and web server permissions",
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": "22",
+            "ToPort": "22",
+            "CidrIp": "0.0.0.0/0"
+          },
+          {
+            "IpProtocol": "tcp",
+            "FromPort": "80",
+            "ToPort": "80",
+            "CidrIp": "0.0.0.0/0"
+          },
+          {
+            "IpProtocol": "tcp",
+            "FromPort": "8140",
+            "ToPort": "8140",
+            "CidrIp": "0.0.0.0/0"
+          },
+          {
+            "IpProtocol": "tcp",
+            "FromPort": "443",
+            "ToPort": "443",
+            "CidrIp": "0.0.0.0/0"
+          }
+        ],
+        "VpcId": {
+          "Ref": "WpVpc"
+        }
+      },
+      "Metadata": {
+        "AWS::CloudFormation::Designer": {
+          "id": "f02fdc72-7e17-4061-96ea-2985f4c24805"
+        }
+      }
+    },
+    "WordpressServer": {
+      "Type": "AWS::EC2::Instance",
+      "DependsOn": [
+        "WpVpc",
+        "PuppetServer"
+      ],
+      "Properties": {
+        "ImageId": {
+          "Ref": "ami"
+        },
+        "KeyName": {
+          "Ref": "KeyPairName"
+        },
+        "InstanceType": "t2.micro",
+        "NetworkInterfaces": [
+          {
+            "GroupSet": [
+              {
+                "Ref": "WpSecGroup"
+              }
+            ],
+            "AssociatePublicIpAddress": "true",
+            "DeviceIndex": "0",
+            "DeleteOnTermination": "true",
+            "SubnetId": {
+              "Ref": "WpSubnet"
+            }
+          }
+        ],
+        "UserData": {
+          "Fn::Base64": {
+            "Fn::Join": [
+              "",
+              [
+                "#!/bin/bash -xe\n",
+                "apt-get update\n",
+                "apt-get -y install python-pip\n",
+                "pip install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz\n",
+                "cp /usr/local/init/ubuntu/cfn-hup /etc/init.d/cfn-hup \n",
+                "chmod +x /etc/init.d/cfn-hup \n",
+                "update-rc.d cfn-hup defaults \n ",
+                "service cfn-hup start \n",
+                "cfn-init -v ",
+                "         --stack ",
+                {
+                  "Ref": "AWS::StackName"
+                },
+                "         --resource WordpressServer ",
+                "         --configsets puppet_install ",
+                "         --region ",
+                {
+                  "Ref": "AWS::Region"
+                },
+                "\n",
+                "cfn-signal -e $? ",
+                "         --stack ",
+                {
+                  "Ref": "AWS::StackName"
+                },
+                "         --resource WordpressServer ",
+                "         --region ",
+                {
+                  "Ref": "AWS::Region"
+                },
+                "\n"
+              ]
+            ]
+          }
+        }
+      },
+      "Metadata": {
+        "AWS::CloudFormation::Init": {
+          "configSets": {
+            "puppet_install": [
+              "change_hostname",
+              "install_packages",
+              "connect"
+            ]
+          },
+          "change_hostname": {
+            "commands": {
+              "01_hostConfs": {
+                "command": "echo \"$WORDPRESS\" >> /etc/hosts && hostname wordpress",
+                "env": {
+                  "WORDPRESS": "127.0.0.1 wordpress"
+                }
+              },
+              "03_addPuppetServer": {
+                "command": "echo \"$PUPPET puppet\" >> /etc/hosts",
+                "env": {
+                  "PUPPET": {
+                    "Fn::GetAtt": [
+                      "PuppetServer",
+                      "PublicIp"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "install_packages": {
+            "packages": {
+              "apt": {
+                "puppet": []
+              }
+            }
+          },
+          "connect": {
+            "commands": {
+              "01_runPuppet": {
+                "command": "puppet agent --server puppet --test"
+              }
+            }
+          }
+        },
+        "AWS::CloudFormation::Designer": {
+          "id": "43f090db-efaf-4bcb-8048-7e4c51068b55"
+        }
+      }
+    },
+    "PuppetServer": {
+      "Type": "AWS::EC2::Instance",
+      "DependsOn": [
+        "WpVpc"
+      ],
+      "Properties": {
+        "ImageId": {
+          "Ref": "ami"
+        },
+        "KeyName": {
+          "Ref": "KeyPairName"
+        },
+        "InstanceType": "t2.micro",
+        "NetworkInterfaces": [
+          {
+            "GroupSet": [
+              {
+                "Ref": "WpSecGroup"
+              }
+            ],
+            "AssociatePublicIpAddress": "true",
+            "DeviceIndex": "0",
+            "DeleteOnTermination": "true",
+            "SubnetId": {
+              "Ref": "WpSubnet"
+            }
+          }
+        ],
+        "UserData": {
+          "Fn::Base64": {
+            "Fn::Join": [
+              "",
+              [
+                "#!/bin/bash -xe\n",
+                "apt-get update\n",
+                "apt-get -y install python-pip\n",
+                "pip install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz\n",
+                "cp /usr/local/init/ubuntu/cfn-hup /etc/init.d/cfn-hup \n",
+                "chmod +x /etc/init.d/cfn-hup \n",
+                "update-rc.d cfn-hup defaults \n ",
+                "service cfn-hup start \n",
+                "cfn-init -v ",
+                "         --stack ",
+                {
+                  "Ref": "AWS::StackName"
+                },
+                "         --resource PuppetServer ",
+                "         --configsets puppet_install ",
+                "         --region ",
+                {
+                  "Ref": "AWS::Region"
+                },
+                "\n",
+                "cfn-signal -e $? ",
+                "         --stack ",
+                {
+                  "Ref": "AWS::StackName"
+                },
+                "         --resource PuppetServer ",
+                "         --region ",
+                {
+                  "Ref": "AWS::Region"
+                },
+                "\n"
+              ]
+            ]
+          }
+        }
+      },
+      "Metadata": {
+        "AWS::CloudFormation::Init": {
+          "configSets": {
+            "puppet_install": [
+              "change_hostname",
+              "install_packages",
+              "enable_autosign",
+              "install_wp_module",
+              "cleanup"
+            ]
+          },
+          "change_hostname": {
+            "commands": {
+              "01_hostConfs": {
+                "command": "echo \"$PUPPET\" >> /etc/hosts && hostname puppet",
+                "env": {
+                  "PUPPET": "127.0.0.1 puppet"
+                }
+              }
+            }
+          },
+          "install_packages": {
+            "packages": {
+              "apt": {
+                "puppetmaster": [],
+                "puppet": [],
+                "facter": []
+              }
+            },
+            "services": {
+              "sysvinit": {
+                "puppet": {
+                  "enabled": "true",
+                  "ensureRunning": "true"
+                }
+              }
+            }
+          },
+          "enable_autosign": {
+            "commands": {
+              "01_create_autosign": {
+                "command": "echo \"*\" >> /etc/puppet/autosign.conf"
+              },
+              "02_start_server": {
+                "command": "puppet master"
+              }
+            }
+          },
+          "install_wp_module": {
+            "sources": {
+              "/tmp": "https://github.com/ehenry2172/puppet-wordpress/archive/1.0.tar.gz"
+            },
+            "commands": {
+              "01_copy_to_puppet_dir": {
+                "command": "cp -R /tmp/puppet-wordpress-1.0/* /etc/puppet"
+              }
+            },
+            "files": {
+              "/etc/puppet/manifests/site.pp": {
+                "content": {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "node wordpress {",
+                      "\n",
+                      "\t class {\n",
+                      "\t\t wordpress:\n",
+                      "\t\t wordpress_db_name => \"wordpress\"",
+                      ",\n",
+                      "\t\t wordpress_db_user => \"wordpress\"",
+                      ",\n",
+                      "\t\t wordpress_db_password => \"",
+                      {
+                        "Ref": "WPAdminPwd"
+                      },
+                      "\"\n",
+                      "\t }\n",
+                      "}\n"
+                    ]
+                  ]
+                },
+                "mode": "00744",
+                "owner": "root",
+                "group": "root"
+              }
+            }
+          },
+          "cleanup": {
+            "commands": {
+              "01_remove_readme": {
+                "command": "rm -f /etc/puppet/cf_template.json /etc/puppet/README.md"
+              }
+            }
+          }
+        },
+        "AWS::CloudFormation::Designer": {
+          "id": "8b9792a1-46ac-4b20-b01e-f28b9e667e1f"
+        }
+      }
+    }
+  },
+  "Metadata": {
+    "AWS::CloudFormation::Designer": {
+      "d3c5d258-bc0b-4ed0-84da-eb02ba713c31": {
+        "size": {
+          "width": 60,
+          "height": 60
+        },
+        "position": {
+          "x": 810,
+          "y": 90
+        },
+        "z": 1,
+        "embeds": []
+      },
+      "56378123-9b4b-44eb-aaa8-63b304a27011": {
+        "size": {
+          "width": 690,
+          "height": 690
+        },
+        "position": {
+          "x": 60,
+          "y": 90
+        },
+        "z": 1,
+        "embeds": [
+          "f02fdc72-7e17-4061-96ea-2985f4c24805",
+          "ca86a995-5eb2-4b0d-919b-4ffece0f999f",
+          "24517522-7e70-46ad-96dc-fd610281a4f4"
+        ]
+      },
+      "f02fdc72-7e17-4061-96ea-2985f4c24805": {
+        "size": {
+          "width": 60,
+          "height": 60
+        },
+        "position": {
+          "x": 480,
+          "y": 150
+        },
+        "z": 2,
+        "parent": "56378123-9b4b-44eb-aaa8-63b304a27011",
+        "embeds": []
+      },
+      "ca86a995-5eb2-4b0d-919b-4ffece0f999f": {
+        "size": {
+          "width": 240,
+          "height": 240
+        },
+        "position": {
+          "x": 90,
+          "y": 450
+        },
+        "z": 2,
+        "parent": "56378123-9b4b-44eb-aaa8-63b304a27011",
+        "embeds": [
+          "1063ffad-9fc2-4a04-be66-2d6be3a04fc6"
+        ]
+      },
+      "b3555356-c508-4ea8-98e5-6c0c3c70f456": {
+        "source": {
+          "id": "d3c5d258-bc0b-4ed0-84da-eb02ba713c31"
+        },
+        "target": {
+          "id": "56378123-9b4b-44eb-aaa8-63b304a27011"
+        },
+        "z": 1
+      },
+      "1063ffad-9fc2-4a04-be66-2d6be3a04fc6": {
+        "size": {
+          "width": 60,
+          "height": 60
+        },
+        "position": {
+          "x": 120,
+          "y": 510
+        },
+        "z": 3,
+        "parent": "ca86a995-5eb2-4b0d-919b-4ffece0f999f",
+        "embeds": [],
+        "references": [
+          "d3c5d258-bc0b-4ed0-84da-eb02ba713c31"
+        ],
+        "dependson": [
+          "b3555356-c508-4ea8-98e5-6c0c3c70f456"
+        ]
+      },
+      "24517522-7e70-46ad-96dc-fd610281a4f4": {
+        "size": {
+          "width": 330,
+          "height": 240
+        },
+        "position": {
+          "x": 90,
+          "y": 150
+        },
+        "z": 2,
+        "parent": "56378123-9b4b-44eb-aaa8-63b304a27011",
+        "embeds": [
+          "8b9792a1-46ac-4b20-b01e-f28b9e667e1f",
+          "43f090db-efaf-4bcb-8048-7e4c51068b55"
+        ]
+      },
+      "8b9792a1-46ac-4b20-b01e-f28b9e667e1f": {
+        "size": {
+          "width": 60,
+          "height": 60
+        },
+        "position": {
+          "x": 120,
+          "y": 210
+        },
+        "z": 3,
+        "parent": "24517522-7e70-46ad-96dc-fd610281a4f4",
+        "embeds": [],
+        "dependson": [
+          "56378123-9b4b-44eb-aaa8-63b304a27011"
+        ],
+        "isrelatedto": [
+          "f02fdc72-7e17-4061-96ea-2985f4c24805"
+        ]
+      },
+      "43f090db-efaf-4bcb-8048-7e4c51068b55": {
+        "size": {
+          "width": 60,
+          "height": 60
+        },
+        "position": {
+          "x": 240,
+          "y": 210
+        },
+        "z": 3,
+        "parent": "24517522-7e70-46ad-96dc-fd610281a4f4",
+        "embeds": [],
+        "dependson": [
+          "56378123-9b4b-44eb-aaa8-63b304a27011",
+          "8b9792a1-46ac-4b20-b01e-f28b9e667e1f"
+        ],
+        "isrelatedto": [
+          "f02fdc72-7e17-4061-96ea-2985f4c24805"
+        ]
+      },
+      "e5c12bf6-8b89-45be-8bb2-d2307726ede9": {
+        "source": {
+          "id": "ca86a995-5eb2-4b0d-919b-4ffece0f999f"
+        },
+        "target": {
+          "id": "24517522-7e70-46ad-96dc-fd610281a4f4"
+        },
+        "z": 2
+      }
+    }
+  }
+}
